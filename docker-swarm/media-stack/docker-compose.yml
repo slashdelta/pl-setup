@@ -1,0 +1,340 @@
+version: '3.8'
+
+services:
+  # Prowlarr - Indexer management
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_MOUNT_POINT}/prowlarr:/config
+    networks:
+      - media
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+  # Sonarr - TV Series management
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_MOUNT_POINT}/sonarr:/config
+      - ${DOWNLOADS_MOUNT_POINT}:/downloads
+      - ${MEDIA_MOUNT_POINT}/tv:/tv
+    networks:
+      - media
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.sonarr.rule=Host(`sonarr.${DOMAIN}`)"
+        - "traefik.http.routers.sonarr.entrypoints=websecure"
+        - "traefik.http.routers.sonarr.tls.certresolver=cloudflare"
+        - "traefik.http.services.sonarr.loadbalancer.server.port=8989"
+
+  # Radarr - Movie management
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_MOUNT_POINT}/radarr:/config
+      - ${DOWNLOADS_MOUNT_POINT}:/downloads
+      - ${MEDIA_MOUNT_POINT}/movies:/movies
+    networks:
+      - media
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.radarr.rule=Host(`radarr.${DOMAIN}`)"
+        - "traefik.http.routers.radarr.entrypoints=websecure"
+        - "traefik.http.routers.radarr.tls.certresolver=cloudflare"
+        - "traefik.http.services.radarr.loadbalancer.server.port=7878"
+
+  # Lidarr - Music management
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_MOUNT_POINT}/lidarr:/config
+      - ${DOWNLOADS_MOUNT_POINT}:/downloads
+      - ${MEDIA_MOUNT_POINT}/music:/music
+    networks:
+      - media
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.lidarr.rule=Host(`lidarr.${DOMAIN}`)"
+        - "traefik.http.routers.lidarr.entrypoints=websecure"
+        - "traefik.http.routers.lidarr.tls.certresolver=cloudflare"
+        - "traefik.http.services.lidarr.loadbalancer.server.port=8686"
+
+  # SABnzbd - Usenet download client
+  sabnzbd:
+    image: lscr.io/linuxserver/sabnzbd:latest
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_MOUNT_POINT}/sabnzbd:/config
+      - ${DOWNLOADS_MOUNT_POINT}/sab:/downloads/sab
+      - ${DOWNLOADS_MOUNT_POINT}/incomplete:/incomplete
+    networks:
+      - media
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.${DOMAIN}`)"
+        - "traefik.http.routers.sabnzbd.entrypoints=websecure"
+        - "traefik.http.routers.sabnzbd.tls.certresolver=cloudflare"
+        - "traefik.http.services.sabnzbd.loadbalancer.server.port=8080"
+
+  # Deluge - BitTorrent download client
+  deluge:
+    image: lscr.io/linuxserver/deluge:latest
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_MOUNT_POINT}/deluge:/config
+      - ${DOWNLOADS_MOUNT_POINT}:/downloads/deluge
+    ports:
+      - target: 58846
+        published: 58846
+        protocol: tcp
+        mode: host
+    networks:
+      - media
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.deluge.rule=Host(`deluge.${DOMAIN}`)"
+        - "traefik.http.routers.deluge.entrypoints=websecure"
+        - "traefik.http.routers.deluge.tls.certresolver=cloudflare"
+        - "traefik.http.services.deluge.loadbalancer.server.port=8112"
+
+  # Overseerr - Request management
+  overseerr:
+    image: lscr.io/linuxserver/overseerr:latest
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_MOUNT_POINT}/overseerr:/config
+    networks:
+      - media
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.overseerr.rule=Host(`overseerr.${DOMAIN}`)"
+        - "traefik.http.routers.overseerr.entrypoints=websecure"
+        - "traefik.http.routers.overseerr.tls.certresolver=cloudflare"
+        - "traefik.http.services.overseerr.loadbalancer.server.port=5055"
+
+  # Plex - Media server
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - VERSION=docker
+      - PLEX_CLAIM=${PLEX_CLAIM}
+    volumes:
+      - ${CONFIG_MOUNT_POINT}/plex:/config
+      - ${MEDIA_MOUNT_POINT}/tv:/tv
+      - ${MEDIA_MOUNT_POINT}/movies:/movies
+      - ${MEDIA_MOUNT_POINT}/music:/music
+    ports:
+      - target: 32400
+        published: 32400
+        protocol: tcp
+        mode: host
+    networks:
+      - media
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.plex.rule=Host(`plex.${DOMAIN}`)"
+        - "traefik.http.routers.plex.entrypoints=websecure"
+        - "traefik.http.routers.plex.tls.certresolver=cloudflare"
+        - "traefik.http.services.plex.loadbalancer.server.port=32400"
+
+  # Redis for Immich
+  immich-redis:
+    image: redis:7-alpine
+    networks:
+      - media
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+  # PostgreSQL for Immich
+  immich-postgres:
+    image: tensorchord/pgvecto-rs:pg14-v0.2.0
+    environment:
+      - POSTGRES_DB=immich
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${IMMICH_DB_PASSWORD}
+    volumes:
+      - ${DATA_MOUNT_POINT}/immich-postgres:/var/lib/postgresql/data
+    networks:
+      - media
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      placement:
+        constraints:
+          - node.labels.database == true
+
+  # Immich Server
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:release
+    environment:
+      - DB_HOSTNAME=immich-postgres
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=${IMMICH_DB_PASSWORD}
+      - DB_DATABASE_NAME=immich
+      - REDIS_HOSTNAME=immich-redis
+      - UPLOAD_LOCATION=${DATA_MOUNT_POINT}/immich-library
+    volumes:
+      - ${DATA_MOUNT_POINT}/immich-library:/usr/src/app/upload
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - media
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.immich.rule=Host(`immich.${DOMAIN}`)"
+        - "traefik.http.routers.immich.entrypoints=websecure"
+        - "traefik.http.routers.immich.tls.certresolver=cloudflare"
+        - "traefik.http.services.immich.loadbalancer.server.port=3001"
+
+  # Immich Machine Learning (GPU support commented out for now)
+  immich-machine-learning:
+    image: ghcr.io/immich-app/immich-machine-learning:release
+    environment:
+      - UPLOAD_LOCATION=${DATA_MOUNT_POINT}/immich-library
+    volumes:
+      - ${DATA_MOUNT_POINT}/immich-model-cache:/cache
+      - ${DATA_MOUNT_POINT}/immich-library:/usr/src/app/upload
+    networks:
+      - media
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      # GPU support - uncomment when ready to use GPU acceleration
+      # placement:
+      #   constraints:
+      #     - node.labels.gpu == true
+      # resources:
+      #   reservations:
+      #     devices:
+      #       - driver: nvidia
+      #         count: 1
+      #         capabilities: [gpu]
+
+networks:
+  media:
+    driver: overlay
+    attachable: true
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK}

@@ -1,0 +1,217 @@
+services:
+  # MySQL Database for Gitea and other services
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-tools
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=gitea
+    volumes:
+      - ${DATA_MOUNT_POINT}/mysql:/var/lib/mysql
+    restart: unless-stopped
+    networks:
+      - tools
+    command: --default-authentication-plugin=mysql_native_password
+
+  # Gitea - Git hosting service
+  gitea:
+    image: gitea/gitea:latest
+    container_name: gitea
+    environment:
+      - USER_UID=${GITEA_USER_UID}
+      - USER_GID=${GITEA_USER_GID}
+      - GITEA__database__DB_TYPE=mysql
+      - GITEA__database__HOST=mysql:3306
+      - GITEA__database__NAME=gitea
+      - GITEA__database__USER=${MYSQL_USER}
+      - GITEA__database__PASSWD=${MYSQL_PASSWORD}
+    restart: unless-stopped
+    networks:
+      - tools
+      - traefik
+    volumes:
+      - ${DATA_MOUNT_POINT}/gitea:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "222:22"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.gitea.rule=Host(`gitea.${DOMAIN}`)"
+      - "traefik.http.routers.gitea.entrypoints=websecure"
+      - "traefik.http.routers.gitea.tls.certresolver=cloudflare"
+      - "traefik.http.services.gitea.loadbalancer.server.port=3000"
+    depends_on:
+      - mysql
+
+  # Guacamole Daemon
+  guacd:
+    image: guacamole/guacd:latest
+    container_name: guacd
+    restart: unless-stopped
+    networks:
+      - tools
+
+  # Guacamole Web Interface
+  guacamole:
+    image: guacamole/guacamole:latest
+    container_name: guacamole
+    environment:
+      - GUACD_HOSTNAME=${GUACD_HOSTNAME}
+      - GUACD_PORT=4822
+      - GUACAMOLE_HOME=${GUACAMOLE_HOME}
+    volumes:
+      - ${CONFIG_MOUNT_POINT}/guacamole:/app/guacamole
+    restart: unless-stopped
+    networks:
+      - tools
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.guacamole.rule=Host(`guacamole.${DOMAIN}`)"
+      - "traefik.http.routers.guacamole.entrypoints=websecure"
+      - "traefik.http.routers.guacamole.tls.certresolver=cloudflare"
+      - "traefik.http.services.guacamole.loadbalancer.server.port=8080"
+    depends_on:
+      - guacd
+
+  # IT-Tools - Collection of handy online tools
+  it-tools:
+    image: corentinth/it-tools:latest
+    container_name: it-tools
+    restart: unless-stopped
+    networks:
+      - tools
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.it-tools.rule=Host(`it-tools.${DOMAIN}`)"
+      - "traefik.http.routers.it-tools.entrypoints=websecure"
+      - "traefik.http.routers.it-tools.tls.certresolver=cloudflare"
+      - "traefik.http.services.it-tools.loadbalancer.server.port=80"
+
+  # Portainer - Docker management UI
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DATA_MOUNT_POINT}/portainer:/data
+    restart: unless-stopped
+    networks:
+      - tools
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.rule=Host(`portainer.${DOMAIN}`)"
+      - "traefik.http.routers.portainer.entrypoints=websecure"
+      - "traefik.http.routers.portainer.tls.certresolver=cloudflare"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+
+  # Watchtower - Automatic container updates
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    environment:
+      - TZ=${TZ}
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_SCHEDULE=0 0 4 * * *
+      - WATCHTOWER_NOTIFICATIONS=email
+      - WATCHTOWER_NOTIFICATION_EMAIL_FROM=watchtower@example.com
+      - WATCHTOWER_NOTIFICATION_EMAIL_TO=admin@example.com
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER=smtp.example.com
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PORT=587
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_USER=your-email@example.com
+      - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PASSWORD=your-app-password
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    networks:
+      - tools
+
+  # PostgreSQL for Nextcloud
+  nextcloud-db:
+    image: postgres:15-alpine
+    container_name: nextcloud-db
+    environment:
+      - POSTGRES_DB=nextcloud
+      - POSTGRES_USER=nextcloud
+      - POSTGRES_PASSWORD=${MYSQL_PASSWORD}
+    volumes:
+      - ${DATA_MOUNT_POINT}/nextcloud-db:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - tools
+
+  # Redis for Nextcloud caching
+  nextcloud-redis:
+    image: redis:7-alpine
+    container_name: nextcloud-redis
+    restart: unless-stopped
+    networks:
+      - tools
+
+  # Nextcloud - File sharing and collaboration platform
+  nextcloud:
+    image: nextcloud:latest
+    container_name: nextcloud
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - POSTGRES_HOST=nextcloud-db
+      - POSTGRES_DB=nextcloud
+      - POSTGRES_USER=nextcloud
+      - POSTGRES_PASSWORD=${MYSQL_PASSWORD}
+      - REDIS_HOST=nextcloud-redis
+      - NEXTCLOUD_ADMIN_USER=${NEXTCLOUD_ADMIN_USER}
+      - NEXTCLOUD_ADMIN_PASSWORD=${NEXTCLOUD_ADMIN_PASSWORD}
+      - NEXTCLOUD_TRUSTED_DOMAINS=nextcloud.${DOMAIN}
+    volumes:
+      - ${DATA_MOUNT_POINT}/nextcloud:/var/www/html
+      - ${DATA_MOUNT_POINT}/nextcloud-data:/var/www/html/data
+    restart: unless-stopped
+    networks:
+      - tools
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nextcloud.rule=Host(`nextcloud.${DOMAIN}`)"
+      - "traefik.http.routers.nextcloud.entrypoints=websecure"
+      - "traefik.http.routers.nextcloud.tls.certresolver=cloudflare"
+      - "traefik.http.services.nextcloud.loadbalancer.server.port=80"
+    depends_on:
+      - nextcloud-db
+      - nextcloud-redis
+
+  # Homepage - Application dashboard
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - HOMEPAGE_ALLOWED_HOSTS=${HOMEPAGE_ALLOWED_HOSTS}
+    volumes:
+      - ${CONFIG_MOUNT_POINT}/homepage:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+    networks:
+      - tools
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.homepage.rule=Host(`homepage.${DOMAIN}`)"
+      - "traefik.http.routers.homepage.entrypoints=websecure"
+      - "traefik.http.routers.homepage.tls.certresolver=cloudflare"
+      - "traefik.http.services.homepage.loadbalancer.server.port=3000"
+
+networks:
+  tools:
+    driver: bridge
+  traefik:
+    external: true
+    name: traefik

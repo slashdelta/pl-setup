@@ -1,0 +1,73 @@
+# Docker media-stack generated directories (created by Docker containers)
+/docker/media-stack/config/
+/docker/media-stack/media/
+/docker/media-stack/downloads/
+
+# Docker tools-stack generated directories (created by Docker containers)
+/docker/tools-stack/config/
+/docker/tools-stack/data/
+
+# Docker egress-stack generated directories (created by Docker containers)
+/docker/egress-stack/config/
+/docker/egress-stack/data/
+
+# Docker Swarm media-stack generated directories (created by Docker containers)
+/docker-swarm/media-stack/config/
+/docker-swarm/media-stack/media/
+/docker-swarm/media-stack/downloads/
+
+# Docker Swarm tools-stack generated directories (created by Docker containers)
+/docker-swarm/tools-stack/config/
+/docker-swarm/tools-stack/data/
+
+# Docker Swarm egress-stack generated directories (created by Docker containers)
+/docker-swarm/egress-stack/config/
+/docker-swarm/egress-stack/data/
+
+# Generated API info file
+/docker/media-stack/api-keys-and-config.md
+/docker-swarm/media-stack/api-keys-and-config.md
+
+# Environment files with sensitive data
+.env
+*.env
+
+# Allow example environment files
+!*.env.example
+
+# Backup files with sensitive data
+*.env.backup
+
+# Docker runtime files
+.env.local
+.env.production
+.env.staging
+
+# Log files
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Backup files
+*.bak
+*.backup
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

@@ -1,0 +1,302 @@
+version: '3.8'
+
+services:
+  # MySQL Database for Gitea and other services
+  mysql:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=gitea
+    volumes:
+      - ${DATA_MOUNT_POINT}/mysql:/var/lib/mysql
+    networks:
+      - tools
+    command: --default-authentication-plugin=mysql_native_password
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      placement:
+        constraints:
+          - node.labels.database == true
+
+  # Gitea - Git hosting service
+  gitea:
+    image: gitea/gitea:latest
+    environment:
+      - USER_UID=${GITEA_USER_UID}
+      - USER_GID=${GITEA_USER_GID}
+      - GITEA__database__DB_TYPE=mysql
+      - GITEA__database__HOST=mysql:3306
+      - GITEA__database__NAME=gitea
+      - GITEA__database__USER=${MYSQL_USER}
+      - GITEA__database__PASSWD=${MYSQL_PASSWORD}
+    networks:
+      - tools
+      - traefik
+    volumes:
+      - ${DATA_MOUNT_POINT}/gitea:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - target: 22
+        published: 222
+        protocol: tcp
+        mode: host
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.gitea.rule=Host(`gitea.${DOMAIN}`)"
+        - "traefik.http.routers.gitea.entrypoints=websecure"
+        - "traefik.http.routers.gitea.tls.certresolver=cloudflare"
+        - "traefik.http.services.gitea.loadbalancer.server.port=3000"
+
+  # Guacamole Daemon
+  guacd:
+    image: guacamole/guacd:latest
+    networks:
+      - tools
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+  # Guacamole Web Interface
+  guacamole:
+    image: guacamole/guacamole:latest
+    environment:
+      - GUACD_HOSTNAME=${GUACD_HOSTNAME}
+      - GUACD_PORT=4822
+      - GUACAMOLE_HOME=${GUACAMOLE_HOME}
+    volumes:
+      - ${CONFIG_MOUNT_POINT}/guacamole:/app/guacamole
+    networks:
+      - tools
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.guacamole.rule=Host(`guacamole.${DOMAIN}`)"
+        - "traefik.http.routers.guacamole.entrypoints=websecure"
+        - "traefik.http.routers.guacamole.tls.certresolver=cloudflare"
+        - "traefik.http.services.guacamole.loadbalancer.server.port=8080"
+
+  # IT-Tools - Collection of handy online tools
+  it-tools:
+    image: corentinth/it-tools:latest
+    networks:
+      - tools
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.it-tools.rule=Host(`it-tools.${DOMAIN}`)"
+        - "traefik.http.routers.it-tools.entrypoints=websecure"
+        - "traefik.http.routers.it-tools.tls.certresolver=cloudflare"
+        - "traefik.http.services.it-tools.loadbalancer.server.port=80"
+
+  # Portainer - Docker management UI
+  portainer:
+    image: portainer/portainer-ce:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DATA_MOUNT_POINT}/portainer:/data
+    networks:
+      - tools
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.portainer.rule=Host(`portainer.${DOMAIN}`)"
+        - "traefik.http.routers.portainer.entrypoints=websecure"
+        - "traefik.http.routers.portainer.tls.certresolver=cloudflare"
+        - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+
+  # Shepherd - Automatic Docker Swarm service updates
+  shepherd:
+    image: mazzolino/shepherd:latest
+    environment:
+      - TZ=${TZ}
+      - SLEEP_TIME=86400  # Check for updates daily (24 hours)
+      - BLACKLIST_SERVICES="shepherd"  # Don't update shepherd itself
+      - WITH_REGISTRY_AUTH=true
+      - WITH_INSECURE_REGISTRY=false
+      - FILTER_SERVICES=label=shepherd.enable=true
+      - NOTIFICATION_TYPE=${SHEPHERD_NOTIFICATION_TYPE:-none}
+      - NOTIFICATION_EMAIL_FROM=${SHEPHERD_EMAIL_FROM:-shepherd@example.com}
+      - NOTIFICATION_EMAIL_TO=${SHEPHERD_EMAIL_TO:-admin@example.com}
+      - NOTIFICATION_EMAIL_SERVER=${SHEPHERD_EMAIL_SERVER:-smtp.example.com}
+      - NOTIFICATION_EMAIL_SERVER_PORT=${SHEPHERD_EMAIL_PORT:-587}
+      - NOTIFICATION_EMAIL_SERVER_USER=${SHEPHERD_EMAIL_USER:-}
+      - NOTIFICATION_EMAIL_SERVER_PASSWORD=${SHEPHERD_EMAIL_PASSWORD:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - tools
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      labels:
+        - "shepherd.enable=false"  # Don't auto-update shepherd itself
+
+  # PostgreSQL for Nextcloud
+  nextcloud-db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=nextcloud
+      - POSTGRES_USER=nextcloud
+      - POSTGRES_PASSWORD=${MYSQL_PASSWORD}
+    volumes:
+      - ${DATA_MOUNT_POINT}/nextcloud-db:/var/lib/postgresql/data
+    networks:
+      - tools
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      placement:
+        constraints:
+          - node.labels.database == true
+
+  # Redis for Nextcloud caching
+  nextcloud-redis:
+    image: redis:7-alpine
+    networks:
+      - tools
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+  # Nextcloud - File sharing and collaboration platform
+  nextcloud:
+    image: nextcloud:latest
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - POSTGRES_HOST=nextcloud-db
+      - POSTGRES_DB=nextcloud
+      - POSTGRES_USER=nextcloud
+      - POSTGRES_PASSWORD=${MYSQL_PASSWORD}
+      - REDIS_HOST=nextcloud-redis
+      - NEXTCLOUD_ADMIN_USER=${NEXTCLOUD_ADMIN_USER}
+      - NEXTCLOUD_ADMIN_PASSWORD=${NEXTCLOUD_ADMIN_PASSWORD}
+      - NEXTCLOUD_TRUSTED_DOMAINS=nextcloud.${DOMAIN}
+    volumes:
+      - ${DATA_MOUNT_POINT}/nextcloud:/var/www/html
+      - ${DATA_MOUNT_POINT}/nextcloud-data:/var/www/html/data
+    networks:
+      - tools
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.nextcloud.rule=Host(`nextcloud.${DOMAIN}`)"
+        - "traefik.http.routers.nextcloud.entrypoints=websecure"
+        - "traefik.http.routers.nextcloud.tls.certresolver=cloudflare"
+        - "traefik.http.services.nextcloud.loadbalancer.server.port=80"
+
+  # Homepage - Application dashboard
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - HOMEPAGE_ALLOWED_HOSTS=${HOMEPAGE_ALLOWED_HOSTS}
+    volumes:
+      - ${CONFIG_MOUNT_POINT}/homepage:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - tools
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.homepage.rule=Host(`homepage.${DOMAIN}`)"
+        - "traefik.http.routers.homepage.entrypoints=websecure"
+        - "traefik.http.routers.homepage.tls.certresolver=cloudflare"
+        - "traefik.http.services.homepage.loadbalancer.server.port=3000"
+
+networks:
+  tools:
+    driver: overlay
+    attachable: true
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK}
